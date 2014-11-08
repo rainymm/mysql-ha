@@ -1,0 +1,8 @@
+class source{
+  exec { "change name":
+    cwd       =>"/var/tmp/mysql",
+    command   =>"mv /var/tmp/mysql/mysql-cluster-gpl-7.3.6-linux-glibc2.5-x86_64 /var/tmp/mysql/mysql-cluster",
+    paht      => ["/usr/bin","/usr/sbin","/bin","/sbin"],
+    logoutput => on_failure,
+}
+}

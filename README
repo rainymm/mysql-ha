@@ -1,0 +1,29 @@
+首先安装部署puppet
+
+master节点安装部署yum install puppet puppet-server facter
+
+agent节点安装部署yum install puppet facter
+
+master: /etc/puppet/puppet.conf
+
+[main]
+server = mastername
+
+[master]
+certname = mastername
+
+
+agent:
+
+[main]
+server = mastername
+certname = agentname
+
+
+agent节点 puppet agent --test
+
+master节点 puppet cert --sign --all
+
+agent节点 puppet agent --test
+
+部署完成

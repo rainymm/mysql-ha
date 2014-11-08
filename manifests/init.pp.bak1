@@ -1,0 +1,217 @@
+class source {
+	require source::user
+	include source::file1,source::file2,source::file3,source::exec1,source::exec2,source::exec3,source::exec4,source::exec5,source::exec6,source::exec7,source::exec8,source::exec9,source::exec10,source::exec11,source::exec12,source::exec13,source::exec14
+}
+
+
+class source::user{
+  group { "mysql":
+    ensure => present,
+    gid    => 2000
+  }
+  user { "mysql":
+    ensure     => present,
+    uid        => 2000,
+    gid        => 2000,
+    groups     => ["mysql"],
+    shell      => "/sbin/nologin",
+    require    => Group["mysql"],
+  }
+}
+
+
+class source::exec1{
+  exec {"create mysql_pag":
+    command => "mkdir /var/tmp/mysql ",
+    path    => ["/usr/bin","/usr/sbin","/bin","/sbin"],
+    creates => "/var/tmp/mysql",
+    logoutput => on_failure,
+	require => Class["source::user"],
+    notify => Class["source::file1"],
+  }
+}
+
+
+class source::file1{
+  file{ "mysql":
+    name    => "/var/tmp/mysql/mysql-cluster.tar.gz",
+    owner   => "root",
+    group   => "root",
+    mode    => 0700,
+    source  => "puppet://$puppetserver/modules/source/mysql-cluster.tar.gz",
+    #backup  => 'main',
+    require => Class["source::exec1"],
+    notify => Class["source::exec2"],
+   }
+}
+
+
+
+class source::exec2{
+  exec { "install mysql":
+    cwd       =>"/var/tmp/mysql",
+    command   =>"tar -zxvf mysql-cluster.tar.gz && mv /var/tmp/mysql/mysql-cluster-gpl-7.3.6-linux-glibc2.5-x86_64 /var/tmp/mysql/mysql",
+    path      => ["/usr/bin","/usr/sbin","/bin","/sbin"],
+    logoutput => on_failure,
+    require   => Class[source::file1],
+	notify => Class[source::exec3],
+    unless    => "/bin/ls /var/tmp/mysql/mysql/lib"
+  }
+}
+
+class source::exec3{
+    exec { "create file":
+        command => "mkdir /var/lib/mysql-cluster",
+        path => ["/usr/bin","/usr/sbin","/bin","/sbin"],
+        creates => "/var/lib/mysql-cluster",
+        notify => Class["source::file2"],
+		require => Class["source::exec2"],
+    }
+}
+
+class source::file2{
+    file{ "config.ini":
+        name => "/var/lib/mysql-cluster/config.ini",
+        owner => "root",
+        group => "root",
+        mode => 0644,
+        source => "puppet://$puppetserver/modules/source/config.ini",
+        require => Class["source::exec3"],
+        notify => Class["source::exec4"],
+    }
+}
+
+
+class source::exec4 {
+    exec { "cp_ndb_mgm":
+        cwd => "/usr/local/bin",
+        command =>"cp /var/tmp/mysql/mysql/bin/ndb_mgm* /usr/local/bin",
+        path => ["/usr/bin","/usr/sbin","/bin","/sbin"],
+        logoutput => on_failure,
+        unless => "/bin/ls /usr/local/bin/ndb_mgm*",
+        require => Class["source::file2"],
+        notify => Class["source::exec5"],
+    }
+}
+
+class source::exec5 {
+    exec { "mkdir mysql":
+        command => "mkdir /usr/local/mysql",
+        path => ["/usr/bin","/usr/sbin","/bin","/sbin"],
+        creates => "/usr/local/mysql",
+        require => Class["source::exec4"],
+		notify => Class["source::file3"],
+    }
+}
+
+
+class source::file3 {
+    file { "my.cnf":
+        name => "/etc/my.cnf",
+        owner => "root",
+        group => "root",
+        mode => 0644,
+        source => "puppet://$puppetserver/modules/source/my.cnf",
+        notify => Class["source::exec6"],
+    }
+}
+
+class source::exec6 {
+    exec { "cp_mysql":
+        cwd => "/usr/local/",
+        command =>"cp -R /var/tmp/mysql/mysql /usr/local",
+        path => ["/usr/bin","/usr/sbin","/bin","/sbin"],
+        logoutput => on_failure,
+        unless => "/bin/ls /usr/local/mysql/bin",
+        require => Class["source::file3"],
+        notify => Class["source::exec7"],
+    }
+}
+
+class source::exec7 {
+    exec { "create_sock":
+        command => "mkdir /usr/local/mysql/sock",
+        path => ["/usr/bin","/usr/sbin","/bin","/sbin"],
+        logoutput => on_failure,
+        creates => "/usr/local/mysql/sock",
+        require => Class["source::exec6"],
+        notify => Class["source::exec8"],
+    }
+}
+
+
+
+class source::exec8 {
+    exec{ "scripts_mysql":
+        command => "/usr/local/mysql/scripts/mysql_install_db --user=mysql --basedir=/usr/local/mysql --datadir=/usr/local/mysql/data",
+        path => ["/usr/bin","/usr/sbin","/bin","/sbin"],
+        logoutput => on_failure,
+        require => Class["source::exec7"],
+        unless => "/bin/ls /usr/local/mysql/my.cnf",
+        notify => Class["source::exec9"],
+    }
+}
+
+class source::exec9 {
+    exec { "quanxian":
+        command => "chgrp -R mysql /usr/local/mysql && chown -R mysql:mysql /usr/local/mysql/data && chown -R mysql:mysql /usr/local/mysql/sock",
+        path => ["/usr/bin","/usr/sbin","/bin","/sbin"],
+        logoutput => on_failure,
+        require => Class["source::exec8"],
+		notify => Class["source::exec10"],
+        refreshonly => true,
+    }
+}
+
+class source::exec10 {
+    exec { "init.d":
+        command => "cp /usr/local/mysql/support-files/mysql.server /etc/rc.d/init.d && mv /etc/rc.d/init.d/mysql.server /etc/rc.d/init.d/mysqld && chmod +x /etc/rc.d/init.d/mysqld",
+        path => ["/usr/bin","/usr/sbin","/bin","/sbin"],
+        logoutput => on_failure,
+        require => Class["source::exec9"],
+        unless => "/bin/ls /etc/rc.d/init.d/mysqld",
+    }
+}
+
+
+class source::exec11 {
+    exec { "start mgm":
+        command => "/usr/local/bin/ndb_mgmd -f /var/lib/mysql-cluster/config.ini",
+        path => ["/usr/bin","/usr/sbin","/bin","/sbin"],
+        logoutput => on_failure,
+		require => Class["source::exec10"],
+		notify => Class["source::exec12","source::exec14"],
+    }
+}
+
+class source::exec12 {
+    exec { "start ndbd init":
+        command => "/usr/local/mysql/bin/ndbd --initial && mkdir /usr/local/mysql/data/gg",
+        path => ["/usr/bin","/usr/sbin","/bin","/sbin"],
+        logoutput => on_failure,
+		unless => "/bin/ls /usr/local/mysql/data/gg",
+        require => Class["source::exec11"],
+        notify => Class["source::exec13"],
+    }
+}
+
+class source::exec14 {
+	exec { "start ndbd":
+		command => "/usr/local/mysql/bin/ndbd",
+        path => ["/usr/bin","/usr/sbin","/bin","/sbin"],
+        logoutput => on_failure,
+        onlyif => "/bin/ls /usr/local/mysql/data/gg",
+        require => Class["source::exec11"],
+	}
+}
+
+class source::exec13 {
+    exec { "start mysqld":
+        command => "/usr/local/mysql/bin/mysqld_safe --user=mysql &",
+        path => ["/usr/bin","/usr/sbin","/bin","/sbin"],
+        logoutput => on_failure,
+        #refreshonly => true,
+        require => Class["source::exec12","source::exec14"],
+    }
+}
+
